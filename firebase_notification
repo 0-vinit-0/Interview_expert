@@ -1,0 +1,132 @@
+import 'dart:io';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:get/get.dart';
+
+class NotificationService {
+  // ✅ Singleton
+  static final NotificationService _instance =
+      NotificationService._internal();
+  factory NotificationService() => _instance;
+  NotificationService._internal();
+
+  final FirebaseMessaging _firebaseMessaging =
+      FirebaseMessaging.instance;
+
+  final FlutterLocalNotificationsPlugin
+      _flutterLocalNotificationsPlugin =
+      FlutterLocalNotificationsPlugin();
+
+  // ✅ Initialize everything
+  Future<void> init() async {
+    await _requestPermission();
+    await _initLocalNotification();
+    _getToken();
+    _listenMessages();
+  }
+
+  // ✅ Ask permission (iOS + Android 13+)
+  Future<void> _requestPermission() async {
+    final settings = await _firebaseMessaging.requestPermission(
+      alert: true,
+      badge: true,
+      sound: true,
+    );
+
+    print("🔔 Permission: ${settings.authorizationStatus}");
+  }
+
+  // ✅ Setup local notifications
+  Future<void> _initLocalNotification() async {
+    const android = AndroidInitializationSettings(
+      "@mipmap/ic_launcher",
+    );
+
+    const ios = DarwinInitializationSettings();
+
+    const settings =
+        InitializationSettings(android: android, iOS: ios);
+
+    await _flutterLocalNotificationsPlugin.initialize(
+      settings,
+      onDidReceiveNotificationResponse: (response) {
+        _handleNotificationTap(response.payload);
+      },
+    );
+  }
+
+  // ✅ Get FCM Token
+  Future<void> _getToken() async {
+    final token = await _firebaseMessaging.getToken();
+    print("✅ FCM TOKEN: $token");
+
+    // TODO: Send token to backend API
+  }
+
+  // ✅ Listen for token refresh
+  void listenTokenRefresh() {
+    _firebaseMessaging.onTokenRefresh.listen((newToken) {
+      print("♻️ TOKEN REFRESHED: $newToken");
+
+      // TODO: Send updated token to backend
+    });
+  }
+
+  // ✅ Listen to all notifications
+  void _listenMessages() {
+    // ✅ Foreground
+    FirebaseMessaging.onMessage.listen((message) {
+      print("📩 FOREGROUND: ${message.notification?.title}");
+
+      _showLocalNotification(message);
+    });
+
+    // ✅ Background Tap
+    FirebaseMessaging.onMessageOpenedApp.listen((message) {
+      print("📩 BACKGROUND TAP");
+      _handleNotificationTap(message.data["route"]);
+    });
+
+    // ✅ Terminated Tap
+    _firebaseMessaging.getInitialMessage().then((message) {
+      if (message != null) {
+        print("📩 TERMINATED TAP");
+        _handleNotificationTap(message.data["route"]);
+      }
+    });
+  }
+
+  // ✅ Show local notification
+  void _showLocalNotification(RemoteMessage message) async {
+    const androidDetails = AndroidNotificationDetails(
+      "high_importance_channel",
+      "High Importance Notifications",
+      importance: Importance.high,
+      priority: Priority.high,
+    );
+
+    const iosDetails = DarwinNotificationDetails();
+
+    const notificationDetails = NotificationDetails(
+      android: androidDetails,
+      iOS: iosDetails,
+    );
+
+    await _flutterLocalNotificationsPlugin.show(
+      0,
+      message.notification?.title,
+      message.notification?.body,
+      notificationDetails,
+      payload: message.data["route"],
+    );
+  }
+
+  // ✅ Handle Tap Navigation
+  void _handleNotificationTap(String? route) {
+    if (route == null) return;
+
+    print("➡️ Navigate to $route");
+
+    Get.toNamed(route); // ✅ GetX navigation
+  }
+}
