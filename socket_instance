@@ -1,0 +1,74 @@
+import 'dart:async';
+import 'package:socket_io_client/socket_io_client.dart' as IO;
+
+class SocketService {
+  // ✅ Singleton
+  static final SocketService _instance = SocketService._internal();
+  factory SocketService() => _instance;
+  SocketService._internal();
+
+  late IO.Socket socket;
+
+  // ✅ Broadcast stream so multiple screens can listen
+  final StreamController<dynamic> _messageController =
+      StreamController<dynamic>.broadcast();
+
+  Stream<dynamic> get messages => _messageController.stream;
+
+  // ✅ Connect only ONCE
+  void connect() {
+    if (socket.connected) return; // ✅ Prevent multiple connects
+
+    socket = IO.io(
+      'https://your_broadcast_url_here',
+      IO.OptionBuilder()
+          .setTransports(['websocket'])
+          .disableAutoConnect()
+          .setReconnection(true)
+          .build(),
+    );
+
+    socket.connect();
+
+    socket.onConnect((_) {
+      print('✅ Socket Connected');
+    });
+
+    socket.on('message', (data) {
+      print('📩 Broadcast Data: $data');
+      _messageController.add(data); // ✅ Send to all listeners
+    });
+
+    socket.onDisconnect((_) {
+      print('🔌 Socket Disconnected');
+    });
+
+    socket.onConnectError((err) {
+      print('❌ Socket Error: $err');
+    });
+  }
+
+  // ✅ Close socket safely
+  void disconnect() {
+    socket.disconnect();
+  }
+
+  void dispose() {
+    _messageController.close();
+  }
+}
+
+
+///use 
+
+StreamBuilder(
+  stream: SocketService().messages,
+  builder: (context, snapshot) {
+    if (!snapshot.hasData) return CircularProgressIndicator();
+
+    final data = snapshot.data;
+
+    return Text("Live Data: $data");
+  },
+)
+
